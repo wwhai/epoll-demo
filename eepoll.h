@@ -106,6 +106,32 @@ int epoll_mod_fd(int epoll_fd, int fd, struct epoll_event e_event);
  *
  * */
 int epoll_del_fd(int epoll_fd, int fd);
+/**
+ * 高低位计算
+ * */
+typedef struct
+{
+    unsigned char type;             // 0001 0000
+    unsigned char remaining_length; // remaining length
+    unsigned short length;          // MSB LSB
+    unsigned char header_name[4];   // "MQTT"
+    unsigned char version;          // MQTT version, V3.1.1 is 4
+    //-------------------------------------------------
+    unsigned char reserved : 1;             // Reserved
+    unsigned char is_set_clean_session : 1; // Clean Session
+    unsigned char is_set_will_flag : 1;     // Will Flag
+    unsigned char is_set_will_qos : 2;      // Will QoS
+    unsigned char is_set_will_retain : 1;   // Will Retain
+    unsigned char is_set_password : 1;      // Password Flag
+    unsigned char is_set_username : 1;      // User Name Flag
+} CONNECT_REQ_PKT;
+typedef struct
+{
+    unsigned char type;             // 0001 0000
+    unsigned char remaining_length; // remaining length
+    unsigned char flags;            // flags
+    unsigned char return_code;      // return_code
+} CONN_ACK_RESP_PKT;
 
 #endif
 // __EEPOLL_H__

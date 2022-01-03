@@ -179,12 +179,26 @@ void start_epoll(int epoll_fd, int listen_socket)
                     if (e_events[i].events & EPOLLIN)
                     {
                         printf("-----------------------------------------------------------\n");
-                        for (int i = 0; i < len; i++)
+                        if (recv_buffer[0] == 0b00010000)
                         {
-                            if (recv_buffer[i] != 0)
-                            {
-                                printf("Byte:%d\t > [%c-%c-%c-%c %c-%c-%c-%c] ASCII Char:> %c\n", i, BYTE_TO_BINARY(recv_buffer[i]), recv_buffer[i]);
-                            }
+                            log_info("CONNECT");
+                            CONNECT_REQ_PKT connect_pkt;
+                            memcpy(&connect_pkt, recv_buffer, 10);
+                            printf("header_name: =>%s\n", connect_pkt.header_name);
+                            printf("[%c-%c-%c-%c %c-%c-%c-%c] | version: %d\n", BYTE_TO_BINARY(connect_pkt.version), connect_pkt.version);
+                            printf("[%c-%c-%c-%c %c-%c-%c-%c] | username: %d\n", BYTE_TO_BINARY(connect_pkt.is_set_username), connect_pkt.is_set_username);
+                            printf("[%c-%c-%c-%c %c-%c-%c-%c] | password: %d\n", BYTE_TO_BINARY(connect_pkt.is_set_password), connect_pkt.is_set_password);
+                            printf("[%c-%c-%c-%c %c-%c-%c-%c] | will_flag: %d\n", BYTE_TO_BINARY(connect_pkt.is_set_will_flag), connect_pkt.is_set_will_flag);
+                            printf("[%c-%c-%c-%c %c-%c-%c-%c] | will_qos: %d\n", BYTE_TO_BINARY(connect_pkt.is_set_will_qos), connect_pkt.is_set_will_qos);
+                            printf("[%c-%c-%c-%c %c-%c-%c-%c] | will_retain: %d\n", BYTE_TO_BINARY(connect_pkt.is_set_will_retain), connect_pkt.is_set_will_retain);
+                            printf("[%c-%c-%c-%c %c-%c-%c-%c] | clean_session: %d\n", BYTE_TO_BINARY(connect_pkt.is_set_clean_session), connect_pkt.is_set_clean_session);
+                            printf("[%c-%c-%c-%c %c-%c-%c-%c] | reserved: %d\n", BYTE_TO_BINARY(connect_pkt.reserved), connect_pkt.reserved);
+                            CONN_ACK_RESP_PKT ack;
+                            ack.type = 0b00100000;
+                            ack.remaining_length = 0b00000010;
+                            ack.flags = 0;
+                            ack.return_code = 0;
+                            send(old_socket, &ack, sizeof(ack), 0);
                         }
                     }
                     if (e_events[i].events & EPOLLOUT)
