@@ -107,7 +107,7 @@ int epoll_mod_fd(int epoll_fd, int fd, struct epoll_event e_event);
  * */
 int epoll_del_fd(int epoll_fd, int fd);
 /**
- * 高低位计算
+ * 连接包
  * */
 typedef struct
 {
@@ -124,7 +124,11 @@ typedef struct
     unsigned char is_set_will_retain : 1;   // Will Retain
     unsigned char is_set_password : 1;      // Password Flag
     unsigned char is_set_username : 1;      // User Name Flag
+    unsigned short keep_alive;              // Keep Alive
 } CONNECT_REQ_PKT;
+/**
+ * 连接回包
+ * */
 typedef struct
 {
     unsigned char type;             // 0001 0000

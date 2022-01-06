@@ -183,7 +183,7 @@ void start_epoll(int epoll_fd, int listen_socket)
                         {
                             log_info("CONNECT");
                             CONNECT_REQ_PKT connect_pkt;
-                            memcpy(&connect_pkt, recv_buffer, 10);
+                            memcpy(&connect_pkt, recv_buffer, len);
                             printf("header_name: =>%s\n", connect_pkt.header_name);
                             printf("[%c-%c-%c-%c %c-%c-%c-%c] | version: %d\n", BYTE_TO_BINARY(connect_pkt.version), connect_pkt.version);
                             printf("[%c-%c-%c-%c %c-%c-%c-%c] | username: %d\n", BYTE_TO_BINARY(connect_pkt.is_set_username), connect_pkt.is_set_username);
