@@ -193,6 +193,37 @@ void start_epoll(int epoll_fd, int listen_socket)
                             printf("[%c-%c-%c-%c %c-%c-%c-%c] | will_retain: %d\n", BYTE_TO_BINARY(connect_pkt.is_set_will_retain), connect_pkt.is_set_will_retain);
                             printf("[%c-%c-%c-%c %c-%c-%c-%c] | clean_session: %d\n", BYTE_TO_BINARY(connect_pkt.is_set_clean_session), connect_pkt.is_set_clean_session);
                             printf("[%c-%c-%c-%c %c-%c-%c-%c] | reserved: %d\n", BYTE_TO_BINARY(connect_pkt.reserved), connect_pkt.reserved);
+                            printf("[%c-%c-%c-%c %c-%c-%c-%c] | keep_alive: %d\n", BYTE_TO_BINARY(connect_pkt.keep_alive), connect_pkt.keep_alive);
+                            printf("least byte:%ld\n", len - (sizeof(connect_pkt)));
+
+                            int offset = len - (sizeof(connect_pkt));
+                            //
+                            // 两个字节作为clientid长度
+                            //
+                            offset++;
+                            printf("clientid length is %d\n", recv_buffer[offset]);
+                            char *client_id = (char *)malloc(sizeof(unsigned char) * recv_buffer[offset]);
+                            offset++;
+                            for (size_t i = 0; i < recv_buffer[offset]; i++)
+                            {
+                                client_id[i] = recv_buffer[offset + i];
+                            }
+                            offset += recv_buffer[offset];
+                            printf("clientid is %s\n", client_id);
+                            //
+                            // 两个字节作为 username 长度
+                            //
+                            if (connect_pkt.is_set_username)
+                            {
+                            }
+                            //
+                            // 两个字节作为 password 长度
+                            //
+                            if (connect_pkt.is_set_password)
+                            {
+                            }
+                            free(client_id);
+
                             CONN_ACK_RESP_PKT ack;
                             ack.type = 0b00100000;
                             ack.remaining_length = 0b00000010;
