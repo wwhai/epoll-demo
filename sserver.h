@@ -107,6 +107,5 @@ int epoll_mod_fd(int epoll_fd, int fd, struct epoll_event e_event);
  * */
 int epoll_del_fd(int epoll_fd, int fd);
 
-#endif
-// __EEPOLL_H__
 #define __EEPOLL_H__
+#endif

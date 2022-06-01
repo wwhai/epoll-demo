@@ -1,4 +1,4 @@
-#include "eepoll.h"
+#include "sserver.h"
 #define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
 #define BYTE_TO_BINARY(byte)       \
     (byte & 0x80 ? '1' : '0'),     \
@@ -168,16 +168,19 @@ void start_epoll(int epoll_fd, int listen_socket)
                     {
                         continue;
                     }
-                    bzero(recv_buffer, sizeof(recv_buffer));
-                    ssize_t len = recv(old_socket, recv_buffer, RECV_BUFFER_LEN, 0);
-                    if (len < 1)
-                    {
-                        epoll_del_fd(epoll_fd, old_socket);
-                        log_info("client[%s:%d] closed", inet_ntoa(client.sin_addr), ntohs(client.sin_port));
-                        continue;
-                    }
+
                     if (e_events[i].events & EPOLLIN)
                     {
+                        bzero(recv_buffer, sizeof(recv_buffer));
+                        ssize_t len = recv(old_socket, recv_buffer, RECV_BUFFER_LEN, 0);
+                        if (len < 1)
+                        {
+                            epoll_del_fd(epoll_fd, old_socket);
+                            log_info("client[%s:%d] closed", inet_ntoa(client.sin_addr), ntohs(client.sin_port));
+                            continue;
+                        }
+                        printf("%s\n", recv_buffer);
+                        epoll_ctl(epoll_fd, EPOLL_CTL_ADD, old_socket, &e_event);
                     }
                     if (e_events[i].events & EPOLLOUT)
                     {
