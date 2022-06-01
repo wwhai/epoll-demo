@@ -125,8 +125,8 @@ void start_epoll(int epoll_fd, int listen_socket)
 
     while (1)
     {
-        int ready_fd_count;
-        switch (ready_fd_count = epoll_wait(epoll_fd, e_events, MAX_WAIT_FD_NUM, TIMEOUT))
+        int ready_fd_count = epoll_wait(epoll_fd, e_events, MAX_WAIT_FD_NUM, TIMEOUT);
+        switch (ready_fd_count)
         {
         case -1:
             break;
@@ -178,59 +178,6 @@ void start_epoll(int epoll_fd, int listen_socket)
                     }
                     if (e_events[i].events & EPOLLIN)
                     {
-                        printf("-----------------------------------------------------------\n");
-                        if (recv_buffer[0] == 0b00010000)
-                        {
-                            log_info("CONNECT");
-                            CONNECT_REQ_PKT connect_pkt;
-                            memcpy(&connect_pkt, recv_buffer, len);
-                            printf("header_name: =>%s\n", connect_pkt.header_name);
-                            printf("[%c-%c-%c-%c %c-%c-%c-%c] | version: %d\n", BYTE_TO_BINARY(connect_pkt.version), connect_pkt.version);
-                            printf("[%c-%c-%c-%c %c-%c-%c-%c] | username: %d\n", BYTE_TO_BINARY(connect_pkt.is_set_username), connect_pkt.is_set_username);
-                            printf("[%c-%c-%c-%c %c-%c-%c-%c] | password: %d\n", BYTE_TO_BINARY(connect_pkt.is_set_password), connect_pkt.is_set_password);
-                            printf("[%c-%c-%c-%c %c-%c-%c-%c] | will_flag: %d\n", BYTE_TO_BINARY(connect_pkt.is_set_will_flag), connect_pkt.is_set_will_flag);
-                            printf("[%c-%c-%c-%c %c-%c-%c-%c] | will_qos: %d\n", BYTE_TO_BINARY(connect_pkt.is_set_will_qos), connect_pkt.is_set_will_qos);
-                            printf("[%c-%c-%c-%c %c-%c-%c-%c] | will_retain: %d\n", BYTE_TO_BINARY(connect_pkt.is_set_will_retain), connect_pkt.is_set_will_retain);
-                            printf("[%c-%c-%c-%c %c-%c-%c-%c] | clean_session: %d\n", BYTE_TO_BINARY(connect_pkt.is_set_clean_session), connect_pkt.is_set_clean_session);
-                            printf("[%c-%c-%c-%c %c-%c-%c-%c] | reserved: %d\n", BYTE_TO_BINARY(connect_pkt.reserved), connect_pkt.reserved);
-                            printf("[%c-%c-%c-%c %c-%c-%c-%c] | keep_alive: %d\n", BYTE_TO_BINARY(connect_pkt.keep_alive), connect_pkt.keep_alive);
-                            printf("least byte:%ld\n", len - (sizeof(connect_pkt)));
-
-                            int offset = len - (sizeof(connect_pkt));
-                            //
-                            // 两个字节作为clientid长度
-                            //
-                            offset++;
-                            printf("clientid length is %d\n", recv_buffer[offset]);
-                            char *client_id = (char *)malloc(sizeof(unsigned char) * recv_buffer[offset]);
-                            offset++;
-                            for (size_t i = 0; i < recv_buffer[offset]; i++)
-                            {
-                                client_id[i] = recv_buffer[offset + i];
-                            }
-                            offset += recv_buffer[offset];
-                            printf("clientid is %s\n", client_id);
-                            //
-                            // 两个字节作为 username 长度
-                            //
-                            if (connect_pkt.is_set_username)
-                            {
-                            }
-                            //
-                            // 两个字节作为 password 长度
-                            //
-                            if (connect_pkt.is_set_password)
-                            {
-                            }
-                            free(client_id);
-
-                            CONN_ACK_RESP_PKT ack;
-                            ack.type = 0b00100000;
-                            ack.remaining_length = 0b00000010;
-                            ack.flags = 0;
-                            ack.return_code = 0;
-                            send(old_socket, &ack, sizeof(ack), 0);
-                        }
                     }
                     if (e_events[i].events & EPOLLOUT)
                     {
