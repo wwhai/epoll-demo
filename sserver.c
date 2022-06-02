@@ -1,14 +1,5 @@
 #include "sserver.h"
-#define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
-#define BYTE_TO_BINARY(byte)       \
-    (byte & 0x80 ? '1' : '0'),     \
-        (byte & 0x40 ? '1' : '0'), \
-        (byte & 0x20 ? '1' : '0'), \
-        (byte & 0x10 ? '1' : '0'), \
-        (byte & 0x08 ? '1' : '0'), \
-        (byte & 0x04 ? '1' : '0'), \
-        (byte & 0x02 ? '1' : '0'), \
-        (byte & 0x01 ? '1' : '0')
+
 /**
  *
  * */
@@ -115,7 +106,12 @@ void start_epoll(int epoll_fd, int listen_socket)
     // 保存客户端信息
     struct sockaddr_in client;
     socklen_t len = sizeof(client);
-
+    //
+    // 数据缓冲区的数据索引, 用来标识数据起点
+    //
+    size_t recv_buffer_seek = 0;
+    int divide_packet = 0; // 是否断包了
+    int stick_packet = 0;  // 是否粘包了
     while (1)
     {
         int ready_fd_count = epoll_wait(epoll_fd, e_events, MAX_WAIT_FD_NUM, TIMEOUT);
@@ -164,35 +160,42 @@ void start_epoll(int epoll_fd, int listen_socket)
 
                     if (e_events[i].events & EPOLLIN)
                     {
+                        if (stick_packet) // 如果粘包了 好办
+                        {
+                            // TODO
+                        }
+                        if (divide_packet) // 如果拆包了 就得组合 使用偏移量来实现标记
+                        {
+                            // TODO
+                        }
+                        // TODO: 这里需要考虑拆包的情况 不然直接清零导致丢了部分包
                         bzero(recv_buffer, sizeof(recv_buffer));
-                        ssize_t len = recv(old_socket, recv_buffer, RECV_BUFFER_LEN, 0);
+                        ssize_t len = recv(old_socket, &recv_buffer[recv_buffer_seek], RECV_BUFFER_LEN, 0);
                         if (len < 1)
                         {
                             epoll_del_fd(epoll_fd, old_socket);
                             log_info("client[%s:%d] disconnected", inet_ntoa(client.sin_addr), ntohs(client.sin_port));
                             continue;
                         }
-                        printf("recv_buffer => %s", recv_buffer);
-                        ///
+
+                        char header[3] = {recv_buffer[recv_buffer_seek + 0],  //'S'
+                                          recv_buffer[recv_buffer_seek + 1],  //'S'
+                                          recv_buffer[recv_buffer_seek + 2]}; //'P'
+                        if (strcmp(header, "SSP") == 0)
+                        {
+                            size_t type = recv_buffer[recv_buffer_seek + 3]; // 第一个字节表示类型
+                            unsigned short len;
+                            memcpy(((&len) + 1), &recv_buffer[recv_buffer_seek + 4], 1);                                         // 第2-3个字节表示数据包长
+                            memcpy(((&len) + 0), &recv_buffer[recv_buffer_seek + 5], 1);                                         // 第2-3个字节表示数据包长
+                            log_info("client [%s] data ==> %s", inet_ntoa(client.sin_addr), &recv_buffer[recv_buffer_seek + 5]); // 真实数据
+                            ///
+                            send(old_socket, "OK", 2, 0);
+                        }
                         struct epoll_event e_event;
                         e_event.data.fd = old_socket;
                         e_event.events = EPOLLIN | EPOLLET | EPOLLOUT;
-                        send(old_socket, "KK", 2, 0);
                         epoll_mod_fd(epoll_fd, old_socket, e_event);
                     }
-                    // if (e_events[i].events & EPOLLOUT)
-                    // {
-                    //     send(old_socket, "OK", 2, 0);
-                    //     log_info(">> EPOLLOUT <<");
-                    // }
-                    // if (e_events[i].events & EPOLLERR)
-                    // {
-                    //     log_info(">> EPOLLERR <<");
-                    // }
-                    // if (e_events[i].events & EPOLLHUP)
-                    // {
-                    //     log_info(">> EPOLLHUP <<");
-                    // }
                 }
             }
         }

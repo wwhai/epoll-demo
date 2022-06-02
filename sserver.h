@@ -13,6 +13,16 @@
 #include <string.h>
 #include <errno.h>
 #include "log.h"
+#define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
+#define BYTE_TO_BINARY(byte)       \
+    (byte & 0x80 ? '1' : '0'),     \
+        (byte & 0x40 ? '1' : '0'), \
+        (byte & 0x20 ? '1' : '0'), \
+        (byte & 0x10 ? '1' : '0'), \
+        (byte & 0x08 ? '1' : '0'), \
+        (byte & 0x04 ? '1' : '0'), \
+        (byte & 0x02 ? '1' : '0'), \
+        (byte & 0x01 ? '1' : '0')
 //
 // 最大等文件描述符
 //
@@ -42,6 +52,7 @@ struct epoll_event e_events[MAX_WAIT_FD_NUM];
 // 数据缓冲区
 //
 unsigned char recv_buffer[RECV_BUFFER_LEN];
+
 //
 // 连接层抽象
 //
