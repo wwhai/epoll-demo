@@ -68,7 +68,7 @@ int init_socket(char *ip, int port, int type)
             log_error("listen: %d", errno);
             exit(3);
         }
-        log_info("%s server started at [%s:%d]", format_type(type), ip, port);
+        log_info("Server started %s@[%s:%d]", format_type(type), ip, port);
     }
 
     return listen_socket;
@@ -79,13 +79,6 @@ int init_socket(char *ip, int port, int type)
 int init_tcp_socket(char *ip, int port)
 {
     return init_socket(ip, port, SOCK_STREAM);
-}
-/**
- * init_udp_socket
- * */
-int init_udp_socket(char *ip, int port)
-{
-    return init_socket(ip, port, SOCK_DGRAM);
 }
 
 /**
@@ -147,7 +140,7 @@ void start_epoll(int epoll_fd, int listen_socket)
                         continue;
                     }
                     set_no_block(new_socket);
-
+                    //
                     struct epoll_event e_event;
                     e_event.events = EPOLLIN | EPOLLET;
                     e_event.data.fd = new_socket;
@@ -156,7 +149,7 @@ void start_epoll(int epoll_fd, int listen_socket)
                         continue;
                     }
                     add_new_connection(new_socket);
-                    log_info("client[%s:%d] connect", inet_ntoa(client.sin_addr), ntohs(client.sin_port));
+                    log_info("client[%s:%d] connected", inet_ntoa(client.sin_addr), ntohs(client.sin_port));
                 }
                 else
                 {
@@ -176,18 +169,30 @@ void start_epoll(int epoll_fd, int listen_socket)
                         if (len < 1)
                         {
                             epoll_del_fd(epoll_fd, old_socket);
-                            log_info("client[%s:%d] closed", inet_ntoa(client.sin_addr), ntohs(client.sin_port));
+                            log_info("client[%s:%d] disconnected", inet_ntoa(client.sin_addr), ntohs(client.sin_port));
                             continue;
                         }
-                        printf("%s\n", recv_buffer);
-                        epoll_ctl(epoll_fd, EPOLL_CTL_ADD, old_socket, &e_event);
+                        printf("recv_buffer => %s", recv_buffer);
+                        ///
+                        struct epoll_event e_event;
+                        e_event.data.fd = old_socket;
+                        e_event.events = EPOLLIN | EPOLLET | EPOLLOUT;
+                        send(old_socket, "KK", 2, 0);
+                        epoll_mod_fd(epoll_fd, old_socket, e_event);
                     }
-                    if (e_events[i].events & EPOLLOUT)
-                    {
-
-                        // sendto(sock, buffer, Len, 0, &client, nSize);
-                        log_info("EPOLLOUT <<");
-                    }
+                    // if (e_events[i].events & EPOLLOUT)
+                    // {
+                    //     send(old_socket, "OK", 2, 0);
+                    //     log_info(">> EPOLLOUT <<");
+                    // }
+                    // if (e_events[i].events & EPOLLERR)
+                    // {
+                    //     log_info(">> EPOLLERR <<");
+                    // }
+                    // if (e_events[i].events & EPOLLHUP)
+                    // {
+                    //     log_info(">> EPOLLHUP <<");
+                    // }
                 }
             }
         }
@@ -204,13 +209,6 @@ void start_tcp_server(char *ip, int port)
     int listen_socket = init_tcp_socket(ip, port);
     int epoll_fd = init_epoll(listen_socket);
     start_epoll(epoll_fd, listen_socket);
-}
-/**
- *
- * */
-void start_udp_server(char *ip, int port)
-{
-    log_debug("wait monment");
 }
 
 /**
