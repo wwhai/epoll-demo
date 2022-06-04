@@ -34,7 +34,7 @@
 //
 // 全局数据缓冲区(字节)
 //
-#define RECV_BUFFER_LEN 1024
+#define RECV_BUFFER_LEN 10240
 //
 // 默认超时时间
 //
@@ -117,6 +117,39 @@ int epoll_mod_fd(int epoll_fd, int fd, struct epoll_event e_event);
  *
  * */
 int epoll_del_fd(int epoll_fd, int fd);
-
+//
+// 包类型
+//
+enum PacketType
+{
+    PING = 0x00,  /* S|S|P|00|      ; C -> S;  */
+    PING_OK,      /* S|S|P|01|      ; S -> C;  */
+    CONN,         /* S|S|P|02|00|00 ; C -> S; CONN: HEADER|UUID(32byte) */
+    CONN_ACK,     /* S|S|P|03|00|00 ; S -> C; CONN_ACK: return -> 0||1||2 */
+    DIS_CONN,     /* S|S|P|04|00|00 ; C -> S;  */
+    DIS_CONN_ACK, /* S|S|P|05|00|00 ; S -> C; DIS_CONN_ACK: ??return -> 0||1||2*/
+    SEND,         /* S|S|P|06|00|00 ; C -> S; SEND: HEADER|DATA(65536byte)*/
+    SEND_ACK,     /* S|S|P|07|00|00 ; S -> C; SEND_ACK: return -> 0||1||2 */
+    PUBLISH,      /* S|S|P|08|00|00 ; C -> S; PUBLISH: HEADER|UUID(32byte)|DATA(65536byte) */
+    PUBLISH_ACK   /* S|S|P|09|00|00 ; S -> C; PUBLISH_ACK: return -> 0||1||2 */
+};
+enum Reply
+{
+    AUTH_FAIL = 0x00, // 认证失败
+    SEND_NO_PERM,     // 禁止发送
+    PUBLISH_NO_PERM   // 禁止发布
+};
+typedef struct
+{
+    unsigned char type;
+    unsigned short data_len;
+    unsigned char *data;
+} Packet;
+//-------------------------------------------------------
+// 编解码
+//-------------------------------------------------------
+int parse_packet(int socket, ssize_t recv_len, unsigned char recv_buffer[]);
+void *encode_packet(Packet packet, unsigned char dist[]);
+void *decode_packet(unsigned char buf[], Packet packet);
 #define __EEPOLL_H__
 #endif

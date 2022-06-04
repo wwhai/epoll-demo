@@ -104,14 +104,9 @@ void start_epoll(int epoll_fd, int listen_socket)
         exit(errno);
     }
     // 保存客户端信息
-    struct sockaddr_in client;
-    socklen_t len = sizeof(client);
-    //
-    // 数据缓冲区的数据索引, 用来标识数据起点
-    //
-    size_t recv_buffer_seek = 0;
-    int divide_packet = 0; // 是否断包了
-    int stick_packet = 0;  // 是否粘包了
+    struct sockaddr_in client_sockaddr_in;
+    socklen_t len = sizeof(client_sockaddr_in);
+
     while (1)
     {
         int ready_fd_count = epoll_wait(epoll_fd, e_events, MAX_WAIT_FD_NUM, TIMEOUT);
@@ -130,7 +125,7 @@ void start_epoll(int epoll_fd, int listen_socket)
                     //
                     // 新连接加入
                     //
-                    int new_socket = accept(listen_socket, (struct sockaddr *)&client, &len);
+                    int new_socket = accept(listen_socket, (struct sockaddr *)&client_sockaddr_in, &len);
                     if (new_socket < 0)
                     {
                         continue;
@@ -144,8 +139,9 @@ void start_epoll(int epoll_fd, int listen_socket)
                     {
                         continue;
                     }
+                    // TODO 起一个定时器检查这个客户端的CONN包,超时时间5秒
                     add_new_connection(new_socket);
-                    log_info("client[%s:%d] connected", inet_ntoa(client.sin_addr), ntohs(client.sin_port));
+                    log_info("Client_sockaddr_in[%s:%d] connected", inet_ntoa(client_sockaddr_in.sin_addr), ntohs(client_sockaddr_in.sin_port));
                 }
                 else
                 {
@@ -160,46 +156,133 @@ void start_epoll(int epoll_fd, int listen_socket)
 
                     if (e_events[i].events & EPOLLIN)
                     {
-                        if (stick_packet) // 如果粘包了 好办
-                        {
-                            // TODO
-                        }
-                        if (divide_packet) // 如果拆包了 就得组合 使用偏移量来实现标记
-                        {
-                            // TODO
-                        }
-                        // TODO: 这里需要考虑拆包的情况 不然直接清零导致丢了部分包
                         bzero(recv_buffer, sizeof(recv_buffer));
-                        ssize_t len = recv(old_socket, &recv_buffer[recv_buffer_seek], RECV_BUFFER_LEN, 0);
-                        if (len < 1)
+                        ssize_t recv_len = recv(old_socket, recv_buffer, RECV_BUFFER_LEN, 0);
+                        if (recv_len < 1)
                         {
                             epoll_del_fd(epoll_fd, old_socket);
-                            log_info("client[%s:%d] disconnected", inet_ntoa(client.sin_addr), ntohs(client.sin_port));
+                            log_info("Client_sockaddr_in[%s:%d] disconnected", inet_ntoa(client_sockaddr_in.sin_addr), ntohs(client_sockaddr_in.sin_port));
                             continue;
                         }
-
-                        char header[3] = {recv_buffer[recv_buffer_seek + 0],  //'S'
-                                          recv_buffer[recv_buffer_seek + 1],  //'S'
-                                          recv_buffer[recv_buffer_seek + 2]}; //'P'
-                        if (strcmp(header, "SSP") == 0)
+                        // 缓冲区溢出 直接丢包
+                        if (recv_len > RECV_BUFFER_LEN)
                         {
-                            size_t type = recv_buffer[recv_buffer_seek + 3]; // 第一个字节表示类型
-                            unsigned short len;
-                            memcpy(((&len) + 1), &recv_buffer[recv_buffer_seek + 4], 1);                                         // 第2-3个字节表示数据包长
-                            memcpy(((&len) + 0), &recv_buffer[recv_buffer_seek + 5], 1);                                         // 第2-3个字节表示数据包长
-                            log_info("client [%s] data ==> %s", inet_ntoa(client.sin_addr), &recv_buffer[recv_buffer_seek + 5]); // 真实数据
-                            ///
-                            send(old_socket, "OK", 2, 0);
+                            bzero(recv_buffer, sizeof(recv_buffer));
+                            log_error("recv_buffer overflow, current packet size is: %d, but max buffer size is:%d", recv_len, RECV_BUFFER_LEN);
                         }
-                        struct epoll_event e_event;
-                        e_event.data.fd = old_socket;
-                        e_event.events = EPOLLIN | EPOLLET | EPOLLOUT;
+
+                        parse_packet(old_socket, recv_len, recv_buffer);
+                        struct epoll_event e_event = {.data.fd = old_socket,
+                                                      .events = EPOLLIN | EPOLLET | EPOLLOUT};
                         epoll_mod_fd(epoll_fd, old_socket, e_event);
                     }
                 }
             }
         }
         break;
+        }
+    }
+}
+//
+// 解析包
+//
+int parse_packet(int socket, ssize_t recv_len, unsigned char recv_buffer[])
+{
+    // 如果剩余的数据超过4个字节就继续开始循环
+    if (recv_len < 4)
+    {
+        return 0;
+    }
+
+    else
+    {
+        // SSP 包头
+        if ((recv_buffer[0] == 'S') &&
+            (recv_buffer[1] == 'S') &&
+            (recv_buffer[2] == 'P'))
+        {
+            unsigned char packet_type = recv_buffer[3];
+            union data_len
+            {
+                unsigned short value;
+                unsigned char buffer[2];
+            } data_len;
+            data_len.buffer[1] = recv_buffer[4];
+            data_len.buffer[0] = recv_buffer[5];
+            int offset;
+            switch (packet_type)
+            {
+            case PING:
+            {
+                offset = 4;
+                log_info("Client_sockaddr_in PING");
+                // reply
+                unsigned char dist_buffer[] = {'S', 'S', 'P', PING_OK};
+                send(socket, dist_buffer, 4, 0);
+            }
+            break;
+            case CONN:
+                //
+                // 连接成功后加入全局MAP Key:SocketFD，Value: Client, 同时加入保活监控器
+                //
+                {
+                    offset = 6 + data_len.value;
+                    unsigned char uuid[32];
+                    bzero(uuid, 32);
+                    memcpy(uuid, &recv_buffer[6], 31);
+                    log_info("Client_sockaddr_in [%s] request CONN", uuid);
+                    // reply
+                    unsigned char dist_buffer[] = {'S', 'S', 'P', CONN_ACK, 0};
+                    send(socket, dist_buffer, 5, 0);
+                }
+                break;
+            case DIS_CONN:
+            {
+                log_info("Client_sockaddr_in request DIS_CONN");
+                close(socket);
+            }
+            break;
+            case SEND: // SSP|T|LL|DATA(N)
+            {
+                offset = 6 + data_len.value;
+                unsigned char *data = (unsigned char *)malloc(data_len.value);
+                bzero(data, data_len.value);
+                memcpy(data, &recv_buffer[6], data_len.value);
+                log_info("Client request SEND: %s", data);
+                free(data);
+                // reply
+                unsigned char dist_buffer[] = {'S', 'S', 'P', SEND_ACK, 0};
+                send(socket, dist_buffer, 5, 0);
+            }
+            break;
+            case PUBLISH: // HEADER(4)Len(2)|UUID(32byte)|DATA(N)
+            {
+                offset = 6 + data_len.value;
+                unsigned char uuid[32];
+                bzero(uuid, 32);
+                memcpy(uuid, &recv_buffer[6], 31);
+                unsigned char *data = (unsigned char *)malloc(data_len.value - 32);
+                bzero(data, data_len.value - 32);
+                memcpy(data, &recv_buffer[6 + 32], data_len.value - 32);
+                log_info("Client request PUBLISH data: [%s] to: %s", data, uuid);
+                free(data);
+                // reply
+                unsigned char dist_buffer[] = {'S', 'S', 'P', PUBLISH_ACK, 0};
+                send(socket, dist_buffer, 5, 0);
+            }
+            break;
+            default:
+                log_error("Unknown packet type: %d, recv_buffer is: %s", packet_type, recv_buffer);
+                return 0;
+                break;
+            }
+            int remain_len = recv_len - offset;
+            parse_packet(socket, remain_len, &recv_buffer[offset]);
+        }
+        else
+        {
+            log_error("Unknown packet data: %s, drop it", recv_buffer);
+            return 0;
         }
     }
 }
@@ -267,4 +350,14 @@ int epoll_del_fd(int epoll_fd, int fd)
         global_connection_id = 0;
     }
     return 0;
+}
+//-------------------------------------------------------
+// 编解码
+//-------------------------------------------------------
+void *encode_packet(Packet packet, unsigned char dist[])
+{
+    memcpy(dist, &packet, 3 + strlen(packet.data));
+}
+void *decode_packet(unsigned char source[], Packet packet)
+{
 }
