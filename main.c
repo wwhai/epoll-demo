@@ -1,12 +1,18 @@
 #include "sserver.h"
 #include <unistd.h>
+#include <pthread.h>
+#include <stdint.h>
+#include "thpool.h"
 
+//
 int main(int argc, char *argv[])
 {
     int arg;
     opterr = 0;
     char ip[15];
     int port;
+    thpool = thpool_init(16);
+
     while ((arg = getopt(argc, argv, "h:p:")) != -1)
     {
         switch (arg)
@@ -29,5 +35,7 @@ int main(int argc, char *argv[])
     }
 
     start_tcp_server(ip, port);
+    thpool_wait(thpool);
+    thpool_destroy(thpool);
     return 0;
 }

@@ -13,6 +13,10 @@
 #include <string.h>
 #include <errno.h>
 #include "log.h"
+#include "thpool.h"
+//
+threadpool thpool;
+//
 #define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
 #define BYTE_TO_BINARY(byte)       \
     (byte & 0x80 ? '1' : '0'),     \
@@ -46,12 +50,7 @@ unsigned int global_connection_id;
 //
 // 最大监控事件数
 //
-struct epoll_event e_events[MAX_WAIT_FD_NUM];
-
-//
-// 数据缓冲区
-//
-unsigned char recv_buffer[RECV_BUFFER_LEN];
+struct epoll_event g_events[MAX_WAIT_FD_NUM];
 
 //
 // 连接层抽象
@@ -146,9 +145,19 @@ typedef struct
     unsigned char *data;
 } Packet;
 //-------------------------------------------------------
+// 线程参数
+//-------------------------------------------------------
+typedef struct th_args
+{
+    int socketfd;
+    int recv_len;
+    unsigned char recv_buffer[RECV_BUFFER_LEN];
+} th_args;
+
+//-------------------------------------------------------
 // 编解码
 //-------------------------------------------------------
-int parse_packet(int socket, ssize_t recv_len, unsigned char recv_buffer[]);
+void parse_packet(void *args);
 void *encode_packet(Packet packet, unsigned char dist[]);
 void *decode_packet(unsigned char buf[], Packet packet);
 #define __EEPOLL_H__
