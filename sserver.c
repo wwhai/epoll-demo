@@ -8,7 +8,7 @@ void set_no_block(int fd)
     int fl = fcntl(fd, F_GETFL);
     if (fl < 0)
     {
-        log_info("fcntl");
+        log_debug("fcntl");
         exit(1);
     }
     if (fcntl(fd, F_SETFL, fl | O_NONBLOCK))
@@ -59,7 +59,7 @@ int init_socket(char *ip, int port, int type)
             log_error("listen: %d", errno);
             exit(3);
         }
-        log_info("Server started %s@[%s:%d]", format_type(type), ip, port);
+        log_debug("Server started %s@[%s:%d]", format_type(type), ip, port);
     }
 
     return listen_socket;
@@ -141,7 +141,7 @@ void start_epoll(int epoll_fd, int listen_socket)
                     }
                     // TODO 起一个定时器检查这个客户端的CONN包,超时时间5秒
                     add_new_connection(new_socket);
-                    // log_info("Client[%s:%d] connected", inet_ntoa(client_sockaddr_in.sin_addr), ntohs(client_sockaddr_in.sin_port));
+                    // log_debug("Client[%s:%d] connected", inet_ntoa(client_sockaddr_in.sin_addr), ntohs(client_sockaddr_in.sin_port));
                 }
                 else
                 {
@@ -156,7 +156,7 @@ void start_epoll(int epoll_fd, int listen_socket)
                     if (g_events[i].events & (EPOLLRDHUP | EPOLLHUP))
                     {
                         epoll_del_fd(epoll_fd, old_socket);
-                        log_info("Client Disconnect: [%s:%d]", inet_ntoa(client_sockaddr_in.sin_addr), ntohs(client_sockaddr_in.sin_port));
+                        log_debug("Client Disconnect: [%s:%d]", inet_ntoa(client_sockaddr_in.sin_addr), ntohs(client_sockaddr_in.sin_port));
                         continue;
                     }
                     // EPOLLIN: 表示进来的消息
@@ -166,17 +166,26 @@ void start_epoll(int epoll_fd, int listen_socket)
                         args->socketfd = old_socket,
                         bzero(args->recv_buffer, sizeof(args->recv_buffer));
                         args->recv_len = recv(old_socket, args->recv_buffer, RECV_BUFFER_LEN, 0);
-                        if (args->recv_len == -1)
+                        // recv_len <0 出错 ；=0 连接关闭 ；>0 接收到数据大小
+                        if (args->recv_len == 0)
                         {
+                            // log_debug("TCP Closed:%d", errno);
+                            break;
+                        }
+                        if (args->recv_len < 0)
+                        {
+                            log_error("TCP error:%d", errno);
                             break;
                         }
                         // 缓冲区溢出 直接丢包
                         if (args->recv_len > RECV_BUFFER_LEN)
                         {
                             bzero(&args->recv_buffer, sizeof(&args->recv_buffer));
-                            log_error("recv_buffer overflow: %d, but max buffer size is:%d", args->recv_len, RECV_BUFFER_LEN);
+                            log_error("recv_buffer overflow: %d, :%d", args->recv_len, RECV_BUFFER_LEN);
                             continue;
                         }
+                        // 这个问题知道怎么回事了 主要是持续不断的流量输入问题
+                        // 解决办法：把进来的流量保存到某个全局地方
                         // log_debug(">> BEGIN PKT------------------------------");
                         // for (size_t i = 0; i < args->recv_len; i++)
                         // {
@@ -185,11 +194,11 @@ void start_epoll(int epoll_fd, int listen_socket)
                         // log_debug(">> END PKT------------------------------");
                         // 线程池
                         thpool_add_work(thpool, parse_packet, (void *)args);
-                        struct epoll_event e_event = {
+                        struct epoll_event new_event = {
                             .data.fd = old_socket,
                             .events = EPOLLIN | EPOLLET | EPOLLOUT,
                         };
-                        epoll_mod_fd(epoll_fd, old_socket, e_event);
+                        epoll_mod_fd(epoll_fd, old_socket, new_event);
                     }
                 }
             }
@@ -207,8 +216,8 @@ void parse_packet(void *pt)
     // 如果剩余的数据超过4个字节就继续开始循环
     if (args->recv_len < 4)
     {
-        free(args);
         log_error("parse_packet error, receive len is:%d", args->recv_len);
+        free(args);
         close(args->socketfd);
         return;
     }
@@ -241,7 +250,7 @@ void parse_packet(void *pt)
 
                 // reply
                 unsigned char dist_buffer[] = {'S', 'S', 'P', PING_OK};
-                log_info("Client PING");
+                log_debug("Client PING");
                 send(args->socketfd, dist_buffer, 4, 0);
                 break;
             }
@@ -253,16 +262,16 @@ void parse_packet(void *pt)
                     offset = 6 + data_len.value;
                     unsigned char uuid[32];
                     bzero(uuid, 32);
-                    memcpy(uuid, &args->recv_buffer[6], 31);
+                    memcpy(uuid, &args->recv_buffer[6], 32);
                     // reply
                     unsigned char dist_buffer[] = {'S', 'S', 'P', CONN_ACK, 0};
-                    log_info("Client CONN");
+                    log_debug("Client CONN: %s", uuid);
                     send(args->socketfd, dist_buffer, 5, 0);
                     break;
                 }
             case DIS_CONN:
             {
-                log_info("Client DIS_CONN");
+                log_debug("Client DIS_CONN");
                 close(args->socketfd);
                 break;
             }
@@ -274,7 +283,7 @@ void parse_packet(void *pt)
                 memcpy(data, &args->recv_buffer[6], data_len.value);
                 // reply
                 unsigned char dist_buffer[] = {'S', 'S', 'P', SEND_ACK, 0};
-                log_info("Client SEND data: [%s]", data);
+                log_debug("Client SEND data: [%s]", data);
                 send(args->socketfd, dist_buffer, 5, 0);
                 free(data);
                 break;
@@ -285,12 +294,12 @@ void parse_packet(void *pt)
                 offset = 6 + data_len.value;
                 unsigned char uuid[32];
                 bzero(uuid, 32);
-                memcpy(uuid, &args->recv_buffer[6], 31);
-                unsigned char *data = (unsigned char *)malloc(data_len.value - 32);
+                memcpy(uuid, &args->recv_buffer[6], 32);
+                unsigned char *data = (unsigned char *)malloc(data_len.value - 31);
                 bzero(data, data_len.value - 32);
                 memcpy(data, &args->recv_buffer[6 + 32], data_len.value - 32);
                 // reply
-                log_info("Client PUBLISH to [%s] data: [%s]", uuid, data);
+                log_debug("Client PUBLISH to [%s] data: [%s]", uuid, data);
                 free(data);
                 unsigned char dist_buffer[] = {'S', 'S', 'P', PUBLISH_ACK, 0};
                 send(args->socketfd, dist_buffer, 5, 0);
