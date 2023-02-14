@@ -1,6 +1,6 @@
 # Sensor Server
 ## 简介
-Sensor Server： 这是一个用 C 实现的传感器数据采集 TCP Based 服务器，适合运行在低级Linux 设备上面。
+Sensor Server： 这是一个用 C 实现的传感器数据采集 TCP Based 服务器案例, 该项目主要用来学习TCP编程，实际上并没有生产力。不过你要是驾驭了epoll，玩这个简直小菜一碟.
 
 ## 协议规范
 ### 报文格式
@@ -22,55 +22,5 @@ Sensor Server： 这是一个用 C 实现的传感器数据采集 TCP Based 服�
 | 0x08 | PUBLISH      | 发布数据:                    |
 | 0x09 | PUBLISH_ACK  | 发布回复: 0x0-成功；0x1-失败 |
 
-### 报文说明
-
-#### 0x00 | PING
-
-#### 0x01 | PING_OK
-
-#### 0x02 | CONN
-
-#### 0x03 | CONN_ACK
-
-#### 0x04 | DIS_CONN
-
-#### 0x05 | DIS_CONN_ACK
-
-#### 0x06 | SEND
-
-#### 0x07 | SEND_ACK
-
-#### 0x08 | PUBLISH
-
-#### 0x09 | PUBLISH_ACK
-
 ## 测试代码
-```
-
--- ping
-
-f().
-{ok, Sock} = gen_tcp:connect("127.0.0.1", 2889, [binary, {packet, 0}]),
-ok = gen_tcp:send(Sock, <<"SSP",0:8>>),
-ok = gen_tcp:close(Sock).
-
--- connect
-
-f(), {ok, Sock} = gen_tcp:connect("127.0.0.1", 2889, [binary, {packet, 0}]),ok = gen_tcp:send(Sock, <<"SSP",2:8,32:16,"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX","SSP",02:8,32:16,"VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVAAAAA">>),ok = gen_tcp:close(Sock).
-
--- disconn
-f().
-{ok, Sock} = gen_tcp:connect("127.0.0.1", 2889, [binary, {packet, 0}]),
-ok = gen_tcp:send(Sock, <<"SSP",4:8>>),
-ok = gen_tcp:close(Sock).
-
--- send
-f(),{ok, Sock} = gen_tcp:connect("127.0.0.1", 2889, [binary, {packet, 0}]),ok = gen_tcp:send(Sock, <<"SSP",6:8,5:16,"HELLO">>),ok = gen_tcp:close(Sock).
-
--- publish
-f().
-{ok, Sock} = gen_tcp:connect("127.0.0.1", 2889, [binary, {packet, 0}]),
-ok = gen_tcp:send(Sock, <<"SSP",8:8,37:16,"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX","HELLO">>),
-ok = gen_tcp:close(Sock).
-
-```
+可用根目录下的 `test.erl` 里面的代码测试，当然前提是你得会erlang。
