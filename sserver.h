@@ -149,7 +149,7 @@ typedef struct
 //-------------------------------------------------------
 typedef struct th_args
 {
-    int socketfd;
+    int socket_fd;
     int recv_len;
     unsigned char recv_buffer[RECV_BUFFER_LEN];
 } th_args;

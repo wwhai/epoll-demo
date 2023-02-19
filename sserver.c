@@ -1,5 +1,5 @@
 #include "sserver.h"
-
+#include <pthread.h>
 /**
  *
  * */
@@ -120,6 +120,7 @@ void start_epoll(int epoll_fd, int listen_socket)
         {
             for (int i = 0; i < ready_fd_count; ++i)
             {
+                th_args *args = (th_args *)malloc(sizeof(th_args));
                 if (g_events[i].data.fd == listen_socket && g_events[i].events & EPOLLIN)
                 {
                     //
@@ -156,14 +157,14 @@ void start_epoll(int epoll_fd, int listen_socket)
                     if (g_events[i].events & (EPOLLRDHUP | EPOLLHUP))
                     {
                         epoll_del_fd(epoll_fd, old_socket);
+                        free(args);
                         log_debug("Client Disconnect: [%s:%d]", inet_ntoa(client_sockaddr_in.sin_addr), ntohs(client_sockaddr_in.sin_port));
                         continue;
                     }
                     // EPOLLIN: 表示进来的消息
                     if (g_events[i].events & EPOLLIN)
                     {
-                        th_args *args = (th_args *)malloc(sizeof(th_args));
-                        args->socketfd = old_socket,
+                        args->socket_fd = old_socket,
                         bzero(args->recv_buffer, sizeof(args->recv_buffer));
                         args->recv_len = recv(old_socket, args->recv_buffer, RECV_BUFFER_LEN, 0);
                         // recv_len <0 出错 ；=0 连接关闭 ；>0 接收到数据大小
@@ -189,7 +190,7 @@ void start_epoll(int epoll_fd, int listen_socket)
                         // log_debug(">> BEGIN PKT------------------------------");
                         // for (size_t i = 0; i < args->recv_len; i++)
                         // {
-                        //     log_debug("[%04X]", args->recv_buffer[i]);
+                        //     log_debug("PKt[%d]  -> [%04X]", i, args->recv_buffer[i]);
                         // }
                         // log_debug(">> END PKT------------------------------");
                         // 线程池
@@ -218,7 +219,7 @@ void parse_packet(void *pt)
     {
         log_error("parse_packet error, receive len is:%d", args->recv_len);
         free(args);
-        close(args->socketfd);
+        close(args->socket_fd);
         return;
     }
 
@@ -241,68 +242,68 @@ void parse_packet(void *pt)
             } data_len;
             data_len.buffer[1] = args->recv_buffer[4];
             data_len.buffer[0] = args->recv_buffer[5];
-            int offset;
+            // log_debug("receive data_len[uuid,data] is: %d", data_len.value);
+            int next_parse_offset;
             switch (packet_type)
             {
             case PING:
             {
-                offset = 4;
-
+                next_parse_offset = 4;
                 // reply
                 unsigned char dist_buffer[] = {'S', 'S', 'P', PING_OK};
                 log_debug("Client PING");
-                send(args->socketfd, dist_buffer, 4, 0);
+                send(args->socket_fd, dist_buffer, 4, 0);
                 break;
             }
             case CONN:
+                log_debug("Client COUNT:%ld", global_connection_id);
                 //
-                // 连接成功后加入全局MAP Key:SocketFD，Value: Client, 同时加入保活监控器
+                // 连接成功后加入全局MAP Key:socket_fd，Value: Client, 同时加入保活监控器
                 //
                 {
-                    offset = 6 + data_len.value;
-                    unsigned char uuid[32];
+                    next_parse_offset = 6 + data_len.value;
+                    unsigned char *uuid = (unsigned char *)malloc(32);
                     bzero(uuid, 32);
                     memcpy(uuid, &args->recv_buffer[6], 32);
-                    // reply
                     unsigned char dist_buffer[] = {'S', 'S', 'P', CONN_ACK, 0};
                     log_debug("Client CONN: %s", uuid);
-                    send(args->socketfd, dist_buffer, 5, 0);
+                    send(args->socket_fd, dist_buffer, 5, 0);
+                    free(uuid);
                     break;
                 }
             case DIS_CONN:
             {
                 log_debug("Client DIS_CONN");
-                close(args->socketfd);
+                close(args->socket_fd);
                 break;
             }
             case SEND: // SSP|T|LL|DATA(N)
             {
-                offset = 6 + data_len.value;
+                next_parse_offset = 6 + data_len.value;
                 unsigned char *data = (unsigned char *)malloc(data_len.value);
                 bzero(data, data_len.value);
                 memcpy(data, &args->recv_buffer[6], data_len.value);
-                // reply
                 unsigned char dist_buffer[] = {'S', 'S', 'P', SEND_ACK, 0};
                 log_debug("Client SEND data: [%s]", data);
-                send(args->socketfd, dist_buffer, 5, 0);
+                send(args->socket_fd, dist_buffer, 5, 0);
                 free(data);
                 break;
             }
-            case PUBLISH: // HEADER(4)Len(2)|UUID(32byte)|DATA(N)
+            case PUBLISH: // HEADER(4)| Len(2) | UUID(32byte) | DATA(N)
             {
-
-                offset = 6 + data_len.value;
-                unsigned char uuid[32];
+                next_parse_offset = 6 + data_len.value;
+                unsigned char *uuid = (unsigned char *)malloc(32);
                 bzero(uuid, 32);
                 memcpy(uuid, &args->recv_buffer[6], 32);
-                unsigned char *data = (unsigned char *)malloc(data_len.value - 31);
+                unsigned char *data = (unsigned char *)malloc(data_len.value - 32 /*UUID*/);
                 bzero(data, data_len.value - 32);
-                memcpy(data, &args->recv_buffer[6 + 32], data_len.value - 32);
-                // reply
-                log_debug("Client PUBLISH to [%s] data: [%s]", uuid, data);
-                free(data);
+                memcpy(data, &args->recv_buffer[6 + 32], data_len.value - 31);
+                //
+                log_debug("Client PUBLISH data: [%s] to [%s]", data, uuid);
                 unsigned char dist_buffer[] = {'S', 'S', 'P', PUBLISH_ACK, 0};
-                send(args->socketfd, dist_buffer, 5, 0);
+                send(args->socket_fd, dist_buffer, 5, 0);
+                free(uuid);
+                free(data);
                 break;
             }
             default:
@@ -310,15 +311,15 @@ void parse_packet(void *pt)
                 return;
             }
 
-            int remain_len = args->recv_len - offset;
+            int remain_len = args->recv_len - next_parse_offset;
             if (remain_len == 0) // 无字节可读
             {
                 free(args);
                 return;
             }
             args->recv_len = remain_len;
-            bzero(args->recv_buffer + offset, RECV_BUFFER_LEN - offset);
-            memcpy(args->recv_buffer, &args->recv_buffer[offset], args->recv_len);
+            bzero(args->recv_buffer + next_parse_offset, RECV_BUFFER_LEN - next_parse_offset);
+            memcpy(args->recv_buffer, &args->recv_buffer[next_parse_offset], args->recv_len);
             parse_packet((void *)args);
         }
         else
@@ -342,10 +343,13 @@ void start_tcp_server(char *ip, int port)
 /**
  *
  * */
+pthread_mutex_t mutex;
+
 connection *new_connection(int listen_socket)
 {
-    connection *c = (connection *)malloc(sizeof(connection));
     global_connection_id++;
+    connection *c = (connection *)malloc(sizeof(connection));
+    pthread_mutex_lock(&mutex);
     if (global_connection_id > (2 << 10))
     {
         log_error("max connection is 1024 but current is:%d", global_connection_id);
@@ -353,6 +357,7 @@ connection *new_connection(int listen_socket)
     }
     c->connection_id = global_connection_id;
     c->listen_socket = listen_socket;
+    pthread_mutex_unlock(&mutex);
     return c;
 }
 

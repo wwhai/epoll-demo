@@ -3,7 +3,7 @@
 #include <pthread.h>
 #include <stdint.h>
 #include "thpool.h"
-
+#define LOG_USE_COLOR 1
 //
 int main(int argc, char *argv[])
 {
